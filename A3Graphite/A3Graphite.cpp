@@ -17,9 +17,6 @@
 #include <Ws2tcpip.h>
 #pragma comment(lib, "Ws2_32.lib")
 
-const char * graphite_host = "something.example.com";
-const int    graphite_port = 2003;
-
 bool graphite_sock_init = false;
 struct sockaddr_in graphite_si;
 SOCKET graphite_sock;
@@ -96,19 +93,53 @@ void __stdcall RVExtension(char *output, int outputSize, const char *function) {
     const char *ret = "\0";
     struct addrinfo hints, *result;
 
-
     if (!graphite_sock_init) {
 
         if ((graphite_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == INVALID_SOCKET) {
             ret = std::to_string(WSAGetLastError()).c_str(); // "failed to open socket";
-        } 
-        else {
+        } else {
+
+            char config_host[80] = "";
+            char config_port[10] = "";
+
+            const char* hostname = "localhost";
+            int port = 2003;
+
+            LPSTR parameter = GetCommandLineA();
+            size_t lengh  = strlen(parameter);
+
+            for (int i = 0; i<lengh; i++) {
+                char *xff = (&parameter[i]);
+                if (strncmp("-A3GraphiteHost", xff, sizeof("-A3GraphiteHost") - 1) == 0) {
+                    sscanf_s(xff + sizeof("-A3GraphiteHost"), "%s", config_host, (unsigned)_countof(config_host));
+                } else if (strncmp("-A3GraphitePort", xff, sizeof("-A3GraphitePort") - 1) == 0) {
+                    sscanf_s(xff + sizeof("-A3GraphitePort"), "%s", config_port,  (unsigned)_countof(config_port));
+                }
+            }
+
+            std::string host_result = std::string(config_host);
+            if (!host_result.empty()) {
+                if (host_result.back() == '"') {
+                    hostname = host_result.substr(0, host_result.size() - 1).c_str();
+                } else {
+                    hostname = host_result.c_str();
+                }
+            }
+
+            std::string port_result = std::string(config_port);
+            if (!port_result.empty()) {
+                if (port_result.back() == '"') {
+                    port = atoi(port_result.substr(0, port_result.size() - 1).c_str());
+                } else {
+                    port = atoi(port_result.c_str());
+                }
+            }
 
             // Lookup IPv4 address
             memset(&hints, 0, sizeof(hints));
             hints.ai_family = AF_INET;
 
-            int error = getaddrinfo(graphite_host, NULL, &hints, &result);
+            int error = getaddrinfo(hostname, NULL, &hints, &result);
             if (error != 0) {
                 strncpy_s(output, outputSize, "host lookup failed", outputSize - 1);
                 return;
@@ -117,7 +148,7 @@ void __stdcall RVExtension(char *output, int outputSize, const char *function) {
             // We pick the first record and use that
             memset((char *)&graphite_si, 0, sizeof(graphite_si));
             graphite_si.sin_family = AF_INET;
-            graphite_si.sin_port = htons(graphite_port);
+            graphite_si.sin_port = htons(port);
             graphite_si.sin_addr = ((struct sockaddr_in *) result->ai_addr)->sin_addr;
 
             graphite_sock_init = true;
